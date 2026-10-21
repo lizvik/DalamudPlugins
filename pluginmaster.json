@@ -3,9 +3,10 @@
     "Author": "Lizvik",
     "Name": "AutoHudLayout",
     "InternalName": "AutoHudLayout",
-    "AssemblyVersion": "1.0.1.1",
+    "AssemblyVersion": "1.0.2.0",
     "Description": "Maps exact game client-area resolutions to native HUD layout slots 1-4, with configurable rules.",
     "ApplicableVersion": "any",
+    "RepoUrl": "https://github.com/lizvik/AutoHudLayout",
     "Tags": [
       "hud",
       "resolution",
@@ -19,10 +20,9 @@
     "IconUrl": "https://raw.githubusercontent.com/lizvik/AutoHudLayout/master/AutoHudLayout/Images/Icon.png",
     "Punchline": "Automatically switches HUD layouts by game window resolution.",
     "AcceptsFeedback": true,
-    "RepoUrl": "https://github.com/lizvik/AutoHudLayout",
-    "DownloadLinkInstall": "https://github.com/lizvik/AutoHudLayout/releases/download/v1.0.1.1/latest.zip",
-    "DownloadLinkUpdate": "https://github.com/lizvik/AutoHudLayout/releases/download/v1.0.1.1/latest.zip",
-    "LastUpdate": 1792514105
+    "DownloadLinkInstall": "https://github.com/lizvik/AutoHudLayout/releases/download/v1.0.2.0/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/lizvik/AutoHudLayout/releases/download/v1.0.2.0/latest.zip",
+    "LastUpdate": 1792583632
   },
   {
     "Author": "Lizvik",
