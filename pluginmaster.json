@@ -28,7 +28,7 @@
     "Author": "Lizvik",
     "Name": "IINACT_CN",
     "InternalName": "IINACT_CN",
-    "AssemblyVersion": "2.10.3.11",
+    "AssemblyVersion": "2.10.3.12",
     "Description": "在现代 .NET 环境中运行 FFXIV_ACT_Plugin 的战斗解析插件，集成了深度修改的 Overlay Plugin。",
     "ApplicableVersion": "2026.10.06.0000.0000",
     "RepoUrl": "https://github.com/lizvik/IINACT_CN",
@@ -42,11 +42,11 @@
     "LoadSync": false,
     "CanUnloadAsync": false,
     "LoadPriority": 0,
-    "IconUrl": "https://raw.githubusercontent.com/tinnate/IINACT_CN/master/images/icon.png",
+    "IconUrl": "https://raw.githubusercontent.com/lizvik/IINACT_CN/master/images/icon.png",
     "Punchline": "适用于国服的战斗解析插件。",
     "AcceptsFeedback": true,
-    "DownloadLinkInstall": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.11/IINACT_CN.zip",
-    "DownloadLinkUpdate": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.11/IINACT_CN.zip",
-    "LastUpdate": 1792547502
+    "DownloadLinkInstall": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.12/IINACT_CN.zip",
+    "DownloadLinkUpdate": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.12/IINACT_CN.zip",
+    "LastUpdate": 1792552787
   }
 ]
