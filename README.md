@@ -4,7 +4,7 @@
 
 ## 玩家安装
 
-下面按汇总仓库命名为 `lizvik/DalamudPlugins`、默认分支为 `main` 规划订阅地址；该仓库尚未由本项目创建或推送。如果使用其他名称或分支，请同步替换。
+订阅地址如下，后续插件更新和新增插件均使用同一地址：
 
 ```text
 https://raw.githubusercontent.com/lizvik/DalamudPlugins/main/pluginmaster.json
