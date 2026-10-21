@@ -18,3 +18,28 @@ https://raw.githubusercontent.com/lizvik/DalamudPlugins/main/pluginmaster.json
 | AutoHudLayout | 根据游戏窗口客户区分辨率自动切换 HUD 布局 | `lizvik/AutoHudLayout` |
 
 后续新增插件仍使用同一订阅地址。
+
+## 管理插件来源
+
+所有来源统一维护在根目录的 `plugins.json` 中，每个数组元素对应一个插件。新增插件时，在数组中追加一项：
+
+```json
+{
+  "enabled": true,
+  "repository": "lizvik/YourPlugin",
+  "internal_name": "YourPlugin",
+  "release_tag": "latest",
+  "zip_asset": "latest.zip"
+}
+```
+
+`internal_name` 必须与安装包中的插件标识一致，`zip_asset` 是 Release 附件的完整文件名。`release_tag` 使用 `latest` 跟踪正式版本，也可填写固定标签。将 `enabled` 改为 `false` 可停止分发该插件。
+
+本地校验和生成：
+
+```powershell
+python scripts/generate_repo.py --validate-config
+python scripts/generate_repo.py
+```
+
+需要使用其他来源文件时，可指定 `--config 文件路径`。`pluginmaster.json` 是自动生成的订阅清单。提交来源配置后会触发更新，定时任务也会在每小时整点触发。

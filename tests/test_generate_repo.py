@@ -52,34 +52,69 @@ class GeneratorTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.config_dir = self.root / "plugins"
-        self.config_dir.mkdir()
+        self.config_file = self.root / "plugins.json"
+        self.config_file.write_text("[]\n", encoding="utf-8")
         self.output = self.root / "pluginmaster.json"
 
-    def write_config(self, value=None, name="ExamplePlugin.json"):
-        (self.config_dir / name).write_text(json.dumps(config() if value is None else value), encoding="utf-8")
+    def write_config(self, value=None):
+        sources = json.loads(self.config_file.read_text(encoding="utf-8"))
+        sources.append(config() if value is None else value)
+        self.config_file.write_text(json.dumps(sources), encoding="utf-8")
 
     def test_disabled_placeholders_need_no_network(self):
         self.write_config(config(enabled=False, repository="YOUR_GITHUB_USERNAME/PluginA"))
         with patch.object(repo, "fetch", side_effect=AssertionError("Network must not be used")):
-            self.assertEqual(repo.generate(self.config_dir, self.output), 0)
+            self.assertEqual(repo.generate(self.config_file, self.output), 0)
         self.assertEqual(self.output.read_text(), "[]\n")
 
     def test_enabled_placeholder_is_rejected(self):
         self.write_config(config(repository="YOUR_GITHUB_USERNAME/PluginA"))
         with self.assertRaisesRegex(repo.RepoError, "replace YOUR_GITHUB_USERNAME"):
-            repo.load_configs(self.config_dir)
+            repo.load_configs(self.config_file)
 
     def test_duplicate_names_are_rejected(self):
         self.write_config()
-        self.write_config(config(internal_name="exampleplugin"), "second.json")
+        self.write_config(config(internal_name="exampleplugin"))
         with self.assertRaisesRegex(repo.RepoError, "duplicate"):
-            repo.load_configs(self.config_dir)
+            repo.load_configs(self.config_file)
 
     def test_unknown_config_key_is_rejected(self):
         self.write_config(config(zip_assset="typo.zip"))
         with self.assertRaisesRegex(repo.RepoError, "unknown keys"):
-            repo.load_configs(self.config_dir)
+            repo.load_configs(self.config_file)
+
+    def test_missing_source_file_does_not_clear_feed(self):
+        self.config_file.unlink()
+        previous = b'[{"InternalName":"ExistingPlugin"}]\n'
+        self.output.write_bytes(previous)
+        with self.assertRaisesRegex(repo.RepoError, "Configuration file does not exist"):
+            repo.generate(self.config_file, self.output)
+        self.assertEqual(self.output.read_bytes(), previous)
+
+    def test_source_file_requires_array(self):
+        self.config_file.write_text(json.dumps(config()), encoding="utf-8")
+        with self.assertRaisesRegex(repo.RepoError, "must be an array"):
+            repo.load_configs(self.config_file)
+
+    def test_invalid_source_entry_reports_index(self):
+        self.config_file.write_text(json.dumps([config(), "invalid"]), encoding="utf-8")
+        with self.assertRaisesRegex(repo.RepoError, r"plugins\.json\[1\]: plugin configuration must be an object"):
+            repo.load_configs(self.config_file)
+
+    def test_multiple_sources_generate_sorted_feed_and_skip_disabled(self):
+        self.write_config(config(internal_name="ZPlugin"))
+        self.write_config(config(internal_name="DisabledPlugin", enabled=False))
+        self.write_config(config(internal_name="APlugin"))
+        with patch.object(repo, "build_entry", side_effect=lambda cfg: manifest(InternalName=cfg["internal_name"])) as build:
+            self.assertEqual(repo.generate(self.config_file, self.output), 2)
+        self.assertEqual([call.args[0]["internal_name"] for call in build.call_args_list], ["ZPlugin", "APlugin"])
+        self.assertEqual([entry["InternalName"] for entry in json.loads(self.output.read_bytes())], ["APlugin", "ZPlugin"])
+
+    def test_cli_accepts_custom_source_file(self):
+        self.write_config()
+        with patch.object(sys, "argv", ["generate_repo.py", "--config", str(self.config_file), "--validate-config"]), \
+             patch.object(repo, "fetch", side_effect=AssertionError("Validation must be offline")):
+            self.assertEqual(repo.main(), 0)
 
     def test_valid_package(self):
         self.assertEqual(repo.read_package(package(), "ExamplePlugin"), manifest())
@@ -131,7 +166,7 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(url, release["assets"][0]["browser_download_url"])
             return package(bundled)
         with patch.object(repo, "fetch", side_effect=fetch_fixture):
-            self.assertEqual(repo.generate(self.config_dir, self.output), 1)
+            self.assertEqual(repo.generate(self.config_file, self.output), 1)
             entry = json.loads(self.output.read_bytes())[0]
             self.assertEqual(entry["AssemblyVersion"], "1.2.3.0")
             self.assertEqual(entry["DownloadLinkInstall"], release["assets"][0]["browser_download_url"])
@@ -140,7 +175,7 @@ class GeneratorTests(unittest.TestCase):
             self.assertNotIn("TestingAssemblyVersion", entry)
             self.assertNotIn("DownloadLinkTesting", entry)
             with patch.object(repo.os, "replace", side_effect=AssertionError("Should not rewrite")):
-                repo.generate(self.config_dir, self.output)
+                repo.generate(self.config_file, self.output)
 
     def test_prerelease_is_rejected(self):
         with patch.object(repo, "fetch", return_value=json.dumps(self.release(prerelease=True)).encode()):
@@ -172,20 +207,20 @@ class GeneratorTests(unittest.TestCase):
 
     def test_later_failure_preserves_entire_existing_feed(self):
         self.write_config()
-        self.write_config(config(internal_name="AnotherPlugin"), "second.json")
+        self.write_config(config(internal_name="AnotherPlugin"))
         previous = b'[{"InternalName": "OldPlugin"}]\n'
         self.output.write_bytes(previous)
         with patch.object(repo, "build_entry", side_effect=[manifest(), repo.RepoError("Release unavailable")]):
             with self.assertRaisesRegex(repo.RepoError, "unavailable"):
-                repo.generate(self.config_dir, self.output)
+                repo.generate(self.config_file, self.output)
         self.assertEqual(self.output.read_bytes(), previous)
         self.assertEqual(list(self.root.glob("*.tmp")), [])
 
     def test_populated_feed_cannot_be_accidentally_emptied(self):
         self.output.write_text('[{"InternalName":"OldPlugin"}]', encoding="utf-8")
         with self.assertRaisesRegex(repo.RepoError, "Refusing to clear"):
-            repo.generate(self.config_dir, self.output)
-        repo.generate(self.config_dir, self.output, allow_empty=True)
+            repo.generate(self.config_file, self.output)
+        repo.generate(self.config_file, self.output, allow_empty=True)
         self.assertEqual(json.loads(self.output.read_bytes()), [])
 
     def test_failed_atomic_replace_preserves_output(self):
@@ -194,7 +229,7 @@ class GeneratorTests(unittest.TestCase):
         with patch.object(repo, "build_entry", return_value=manifest()), \
              patch.object(repo.os, "replace", side_effect=OSError("Cannot replace")):
             with self.assertRaises(OSError):
-                repo.generate(self.config_dir, self.output)
+                repo.generate(self.config_file, self.output)
         self.assertEqual(self.output.read_bytes(), b"[]\n")
         self.assertEqual(list(self.root.glob("*.tmp")), [])
 

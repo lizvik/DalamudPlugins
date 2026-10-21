@@ -73,38 +73,41 @@ def nonempty(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
-def load_configs(directory: Path) -> list[dict]:
-    if not directory.is_dir():
-        raise RepoError(f"Configuration directory does not exist: {directory}")
+def load_configs(path: Path) -> list[dict]:
+    if not path.is_file():
+        raise RepoError(f"Configuration file does not exist: {path}")
+    sources = parse_json(path.read_bytes(), path.name)
+    if not isinstance(sources, list):
+        raise RepoError(f"{path.name}: configuration must be an array of plugin objects")
     configs = []
     names = set()
-    for path in sorted(directory.glob("*.json")):
-        cfg = parse_json(path.read_bytes(), path.name)
+    for index, cfg in enumerate(sources):
+        label = f"{path.name}[{index}]"
         if not isinstance(cfg, dict):
-            raise RepoError(f"{path.name}: configuration must be an object")
+            raise RepoError(f"{label}: plugin configuration must be an object")
         if set(cfg) - CONFIG_KEYS:
-            raise RepoError(f"{path.name}: unknown keys: {sorted(set(cfg) - CONFIG_KEYS)}")
+            raise RepoError(f"{label}: unknown keys: {sorted(set(cfg) - CONFIG_KEYS)}")
         if type(cfg.get("enabled")) is not bool:
-            raise RepoError(f"{path.name}: enabled must be true or false")
+            raise RepoError(f"{label}: enabled must be true or false")
         for field in ("repository", "internal_name", "release_tag", "zip_asset"):
             if not nonempty(cfg.get(field)):
-                raise RepoError(f"{path.name}: {field} must be a non-empty string")
+                raise RepoError(f"{label}: {field} must be a non-empty string")
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", cfg["repository"]):
-            raise RepoError(f"{path.name}: repository must be owner/repo")
+            raise RepoError(f"{label}: repository must be owner/repo")
         if not NAME.fullmatch(cfg["internal_name"]):
-            raise RepoError(f"{path.name}: invalid internal_name")
+            raise RepoError(f"{label}: invalid internal_name")
         for field in ("zip_asset", "manifest_asset"):
             if field in cfg and (not nonempty(cfg[field]) or "/" in cfg[field] or "\\" in cfg[field]):
-                raise RepoError(f"{path.name}: {field} must be an exact asset filename")
+                raise RepoError(f"{label}: {field} must be an exact asset filename")
         if not cfg["zip_asset"].lower().endswith(".zip"):
-            raise RepoError(f"{path.name}: zip_asset must end in .zip")
+            raise RepoError(f"{label}: zip_asset must end in .zip")
         if not cfg["enabled"]:
             continue
         if "YOUR_GITHUB_USERNAME" in cfg["repository"]:
-            raise RepoError(f"{path.name}: replace YOUR_GITHUB_USERNAME before enabling")
+            raise RepoError(f"{label}: replace YOUR_GITHUB_USERNAME before enabling")
         key = cfg["internal_name"].casefold()
         if key in names:
-            raise RepoError(f"{path.name}: duplicate InternalName: {cfg['internal_name']}")
+            raise RepoError(f"{label}: duplicate InternalName: {cfg['internal_name']}")
         names.add(key)
         configs.append(cfg)
     return configs
@@ -211,8 +214,8 @@ def build_entry(cfg: dict) -> dict:
     return entry
 
 
-def generate(config_dir: Path, output: Path, allow_empty: bool = False) -> int:
-    configs = load_configs(config_dir)
+def generate(config_file: Path, output: Path, allow_empty: bool = False) -> int:
+    configs = load_configs(config_file)
     # Resolve everything before touching the current feed.
     entries = []
     for cfg in configs:
@@ -243,17 +246,17 @@ def generate(config_dir: Path, output: Path, allow_empty: bool = False) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config-dir", type=Path, default=ROOT / "plugins")
+    parser.add_argument("--config", type=Path, default=ROOT / "plugins.json", help="JSON file containing an array of plugin sources")
     parser.add_argument("--output", type=Path, default=ROOT / "pluginmaster.json")
     parser.add_argument("--validate-config", action="store_true", help="Validate local configuration without network access")
     parser.add_argument("--allow-empty", action="store_true", help="Allow intentionally clearing a populated feed")
     args = parser.parse_args()
     try:
         if args.validate_config:
-            configs = load_configs(args.config_dir)
+            configs = load_configs(args.config)
             print(f"Configuration valid: {len(configs)} enabled plugins")
         else:
-            generate(args.config_dir, args.output, args.allow_empty)
+            generate(args.config, args.output, args.allow_empty)
     except (RepoError, OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
