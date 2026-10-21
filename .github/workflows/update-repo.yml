@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'plugins.json'
+      - 'plugins/plugins.json'
       - 'scripts/**'
       - '.github/workflows/update-repo.yml'
 

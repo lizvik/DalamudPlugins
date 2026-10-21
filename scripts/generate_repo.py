@@ -246,7 +246,7 @@ def generate(config_file: Path, output: Path, allow_empty: bool = False) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=ROOT / "plugins.json", help="JSON file containing an array of plugin sources")
+    parser.add_argument("--config", type=Path, default=ROOT / "plugins" / "plugins.json", help="JSON file containing an array of plugin sources")
     parser.add_argument("--output", type=Path, default=ROOT / "pluginmaster.json")
     parser.add_argument("--validate-config", action="store_true", help="Validate local configuration without network access")
     parser.add_argument("--allow-empty", action="store_true", help="Allow intentionally clearing a populated feed")
