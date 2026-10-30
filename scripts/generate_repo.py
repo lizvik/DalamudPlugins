@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build a Dalamud repository from public GitHub release assets (stdlib only)."""
+"""Build a Dalamud repository from each plugin repository's repo.json (stdlib only)."""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
-import io
+import base64
+import binascii
 import json
 import os
 from pathlib import Path
@@ -13,21 +13,17 @@ import re
 import sys
 import tempfile
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_JSON = 1024 * 1024
-MAX_ZIP = 128 * 1024 * 1024
-MAX_UNPACKED = 512 * 1024 * 1024
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
-VERSION = re.compile(r"\d+\.\d+(?:\.\d+){0,2}", re.ASCII)
-CONFIG_KEYS = {"enabled", "repository", "internal_name", "release_tag", "zip_asset", "manifest_asset"}
+CONFIG_KEYS = {"enabled", "repository", "internal_name"}
 
 
 class RepoError(Exception):
-    """A configuration, release or manifest is unsuitable for publication."""
+    """A configuration or repository manifest is unsuitable for publication."""
 
 
 class SafeRedirect(HTTPRedirectHandler):
@@ -54,7 +50,7 @@ def fetch(url: str, limit: int) -> bytes:
         with build_opener(SafeRedirect()).open(Request(url, headers=headers), timeout=30) as response:
             result = response.read(limit + 1)
     except HTTPError as exc:
-        raise RepoError(f"HTTP {exc.code} from {parsed.hostname}; check public releases, asset names and API limits") from exc
+        raise RepoError(f"HTTP {exc.code} from {parsed.hostname}; check repo.json access and API limits") from exc
     except (URLError, TimeoutError, OSError) as exc:
         raise RepoError(f"Network request failed for {parsed.hostname}: {exc}") from exc
     if len(result) > limit:
@@ -89,18 +85,13 @@ def load_configs(path: Path) -> list[dict]:
             raise RepoError(f"{label}: unknown keys: {sorted(set(cfg) - CONFIG_KEYS)}")
         if type(cfg.get("enabled")) is not bool:
             raise RepoError(f"{label}: enabled must be true or false")
-        for field in ("repository", "internal_name", "release_tag", "zip_asset"):
+        for field in ("repository", "internal_name"):
             if not nonempty(cfg.get(field)):
                 raise RepoError(f"{label}: {field} must be a non-empty string")
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", cfg["repository"]):
             raise RepoError(f"{label}: repository must be owner/repo")
         if not NAME.fullmatch(cfg["internal_name"]):
             raise RepoError(f"{label}: invalid internal_name")
-        for field in ("zip_asset", "manifest_asset"):
-            if field in cfg and (not nonempty(cfg[field]) or "/" in cfg[field] or "\\" in cfg[field]):
-                raise RepoError(f"{label}: {field} must be an exact asset filename")
-        if not cfg["zip_asset"].lower().endswith(".zip"):
-            raise RepoError(f"{label}: zip_asset must end in .zip")
         if not cfg["enabled"]:
             continue
         if "YOUR_GITHUB_USERNAME" in cfg["repository"]:
@@ -121,9 +112,6 @@ def validate_manifest(manifest, expected_name: str) -> None:
             raise RepoError(f"Manifest requires a non-empty {field}")
     if manifest["InternalName"] != expected_name:
         raise RepoError(f"InternalName mismatch: expected {expected_name}")
-    version = manifest["AssemblyVersion"]
-    if not VERSION.fullmatch(version) or any(int(part) > 2147483647 for part in version.split(".")):
-        raise RepoError("AssemblyVersion must be a numeric .NET version, e.g. 1.2.3.0")
     if type(manifest.get("DalamudApiLevel")) is not int or manifest["DalamudApiLevel"] < 1:
         raise RepoError("DalamudApiLevel must be a positive integer from the plugin build")
     if "ApplicableVersion" in manifest and not nonempty(manifest["ApplicableVersion"]):
@@ -135,82 +123,39 @@ def validate_manifest(manifest, expected_name: str) -> None:
         raise RepoError("Testing-exclusive plugins cannot be published to this stable feed")
 
 
-def read_package(data: bytes, internal_name: str) -> dict:
-    try:
-        with ZipFile(io.BytesIO(data)) as archive:
-            infos = archive.infolist()
-            filenames = [entry.filename for entry in infos]
-            if len(filenames) != len(set(filenames)):
-                raise RepoError("ZIP contains duplicate filenames")
-            if sum(entry.file_size for entry in infos) > MAX_UNPACKED:
-                raise RepoError("ZIP exceeds the uncompressed size limit")
-            for filename in filenames:
-                normalized = filename.replace("\\", "/")
-                if normalized.startswith("/") or ":" in normalized or ".." in normalized.split("/"):
-                    raise RepoError("ZIP contains an unsafe path")
-            for filename in (f"{internal_name}.dll", f"{internal_name}.json"):
-                if filename not in filenames or archive.getinfo(filename).file_size == 0:
-                    raise RepoError(f"ZIP must contain a non-empty {filename} at its root")
-            manifest_info = archive.getinfo(f"{internal_name}.json")
-            if manifest_info.file_size > MAX_JSON:
-                raise RepoError("Packaged manifest is too large")
-            corrupt = archive.testzip()
-            if corrupt:
-                raise RepoError(f"ZIP checksum failed: {corrupt}")
-            manifest = parse_json(archive.read(manifest_info), "Packaged manifest")
-    except (BadZipFile, RuntimeError, NotImplementedError, EOFError) as exc:
-        raise RepoError(f"Invalid or unsupported ZIP: {exc}") from exc
-    validate_manifest(manifest, internal_name)
-    return manifest
-
-
-def release_asset(release: dict, name: str, repository: str) -> str:
-    assets = release.get("assets", [])
-    if not isinstance(assets, list):
-        raise RepoError("Release assets must be an array")
-    matches = [asset for asset in assets if isinstance(asset, dict) and asset.get("name") == name]
-    if len(matches) != 1:
-        raise RepoError(f"Release must contain exactly one asset named {name}")
-    url = matches[0].get("browser_download_url")
-    # Only immutable-by-tag, public download URLs for this release are accepted.
-    tag = quote(release["tag_name"], safe="")
-    expected = f"https://github.com/{repository}/releases/download/{tag}/{quote(name, safe='')}"
-    if url != expected:
-        raise RepoError(f"Unexpected download URL for {name}; use a public GitHub release asset")
-    return url
-
-
 def build_entry(cfg: dict) -> dict:
     repository = cfg["repository"]
-    selector = "latest" if cfg["release_tag"] == "latest" else "tags/" + quote(cfg["release_tag"], safe="")
-    release = parse_json(fetch(f"https://api.github.com/repos/{repository}/releases/{selector}", MAX_JSON), "GitHub release")
-    if not isinstance(release, dict) or not nonempty(release.get("tag_name")):
-        raise RepoError(f"{repository}: invalid release response")
-    if release.get("draft") is not False or release.get("prerelease") is not False:
-        raise RepoError(f"{repository}: only published stable releases are supported")
-    download_url = release_asset(release, cfg["zip_asset"], repository)
-    manifest = read_package(fetch(download_url, MAX_ZIP), cfg["internal_name"])
-    if "manifest_asset" in cfg:
-        external_url = release_asset(release, cfg["manifest_asset"], repository)
-        external = parse_json(fetch(external_url, MAX_JSON), "Release manifest")
-        validate_manifest(external, cfg["internal_name"])
-        for field in ("InternalName", "AssemblyVersion", "DalamudApiLevel"):
-            if external[field] != manifest[field]:
-                raise RepoError(f"Release manifest and packaged manifest disagree on {field}")
-        manifest = external
+    response = parse_json(fetch(f"https://api.github.com/repos/{repository}/contents/repo.json", MAX_JSON),
+                          f"{repository}/repo.json response")
+    if not isinstance(response, dict) or response.get("encoding") != "base64" or not isinstance(response.get("content"), str):
+        raise RepoError(f"{repository}: repo.json response has no base64 content")
     try:
-        published = datetime.fromisoformat(release["published_at"].replace("Z", "+00:00"))
-        if published.tzinfo is None:
-            raise ValueError("Missing timezone")
-        timestamp = int(published.timestamp())
-    except (KeyError, AttributeError, TypeError, ValueError, OverflowError) as exc:
-        raise RepoError("Release has no valid published_at timestamp") from exc
+        data = base64.b64decode(response["content"], validate=False)
+    except (ValueError, binascii.Error) as exc:
+        raise RepoError(f"{repository}: invalid repo.json content") from exc
+    if len(data) > MAX_JSON:
+        raise RepoError(f"{repository}: repo.json exceeds the size limit")
+    source = parse_json(data, f"{repository}/repo.json")
+    if isinstance(source, dict):
+        source = [source]
+    if not isinstance(source, list):
+        raise RepoError(f"{repository}: repo.json must contain a plugin or an array of plugins")
+    matches = [item for item in source if isinstance(item, dict) and item.get("InternalName") == cfg["internal_name"]]
+    if len(matches) != 1:
+        raise RepoError(f"{repository}: repo.json must contain exactly one {cfg['internal_name']} entry")
+    manifest = matches[0]
+    validate_manifest(manifest, cfg["internal_name"])
+    for field in ("DownloadLinkInstall", "DownloadLinkUpdate"):
+        if not nonempty(manifest.get(field)):
+            raise RepoError(f"{repository}: {field} must be an HTTPS URL")
+        parsed = urlsplit(manifest[field])
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+            raise RepoError(f"{repository}: {field} must be an HTTPS URL")
     # Remove testing data inherited from an upstream manifest.
     entry = {key: value for key, value in manifest.items()
              if not key.startswith("Testing") and key not in ("DownloadLinkTesting", "IsTestingExclusive")}
     entry.setdefault("ApplicableVersion", "any")
     entry.setdefault("RepoUrl", f"https://github.com/{repository}")
-    entry.update(DownloadLinkInstall=download_url, DownloadLinkUpdate=download_url, LastUpdate=timestamp)
     return entry
 
 

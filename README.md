@@ -1,6 +1,6 @@
 # Lizvik 的 Dalamud 插件订阅仓库
 
-用一个固定订阅地址管理多个 FF14 / Dalamud 插件。每个插件继续在自己的 GitHub 仓库发布，本仓库读取 Release 安装包，自动生成 `pluginmaster.json`。
+用一个固定订阅地址管理多个 FF14 / Dalamud 插件。每个插件继续在自己的 GitHub 仓库发布，本仓库读取各插件仓库根目录的 `repo.json`，自动生成 `pluginmaster.json`。
 
 ## 玩家安装
 
@@ -21,19 +21,17 @@ https://raw.githubusercontent.com/lizvik/DalamudPlugins/main/pluginmaster.json
 
 ## 管理插件来源
 
-所有来源统一维护在根目录的 `plugins.json` 中，每个数组元素对应一个插件。新增插件时，在数组中追加一项：
+所有来源统一维护在 `plugins/plugins.json` 中，每个数组元素对应一个插件。新增插件时，在数组中追加一项：
 
 ```json
 {
   "enabled": true,
   "repository": "lizvik/YourPlugin",
-  "internal_name": "YourPlugin",
-  "release_tag": "latest",
-  "zip_asset": "latest.zip"
+  "internal_name": "YourPlugin"
 }
 ```
 
-`internal_name` 必须与安装包中的插件标识一致，`zip_asset` 是 Release 附件的完整文件名。`release_tag` 使用 `latest` 跟踪正式版本，也可填写固定标签。将 `enabled` 改为 `false` 可停止分发该插件。
+`internal_name` 必须与仓库 `repo.json` 中的 `InternalName` 一致。生成器直接使用 `repo.json` 中的版本和下载链接，不比较安装包或其他文件的版本。将 `enabled` 改为 `false` 可停止分发该插件。
 
 本地校验和生成：
 
