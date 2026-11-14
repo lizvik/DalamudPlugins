@@ -46,7 +46,7 @@
     "Author": "Lizvik",
     "Name": "Visland",
     "InternalName": "visland",
-    "AssemblyVersion": "1.0.0.0",
+    "AssemblyVersion": "1.1.0.0",
     "Description": "Automate gathering, workshop assignments, etc.",
     "Punchline": "Automate island sanctuary activities",
     "RepoUrl": "https://github.com/lizvik/ffxiv_visland",
