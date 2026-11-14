@@ -25,7 +25,7 @@
     "Author": "Lizvik",
     "Name": "IINACT_CN",
     "InternalName": "IINACT_CN",
-    "AssemblyVersion": "2.10.3.12",
+    "AssemblyVersion": "2.10.3.13",
     "Description": "在现代 .NET 环境中运行 FFXIV_ACT_Plugin 的战斗解析插件，集成了深度修改的 Overlay Plugin。",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/lizvik/IINACT_CN",
@@ -39,7 +39,29 @@
     "IconUrl": "https://raw.githubusercontent.com/tinnate/IINACT_CN/master/images/icon.png",
     "Punchline": "适用于国服的战斗解析插件。",
     "IsHide": "False",
-    "DownloadLinkInstall": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.12/IINACT_CN.zip",
-    "DownloadLinkUpdate": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.12/IINACT_CN.zip"
+    "DownloadLinkInstall": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.13/IINACT_CN.zip",
+    "DownloadLinkUpdate": "https://github.com/lizvik/IINACT_CN/releases/download/v2.10.3.13/IINACT_CN.zip"
+  },
+  {
+    "Author": "Lizvik",
+    "Name": "Visland",
+    "InternalName": "visland",
+    "AssemblyVersion": "1.0.0.0",
+    "Description": "Automate gathering, workshop assignments, etc.",
+    "Punchline": "Automate island sanctuary activities",
+    "RepoUrl": "https://github.com/lizvik/ffxiv_visland",
+    "ApplicableVersion": "any",
+    "Tags": [
+      "island-sanctuary",
+      "gathering",
+      "workshop"
+    ],
+    "CategoryTags": [
+      "utility"
+    ],
+    "DalamudApiLevel": 15,
+    "IconUrl": "https://raw.githubusercontent.com/lizvik/ffxiv_visland/master/icon.png",
+    "DownloadLinkInstall": "https://github.com/lizvik/ffxiv_visland/releases/latest/download/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/lizvik/ffxiv_visland/releases/latest/download/latest.zip"
   }
 ]
